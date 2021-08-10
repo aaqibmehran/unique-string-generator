@@ -45,6 +45,17 @@ class UniqueStringGenerator
         return ['type' => $fieldType, 'length' => $fieldLength];
     }
 
+    private function generateCode($length){
+        $characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        $charactersLength = strlen($characters);
+        $randomString = '';
+        for ($i = 0; $i < $length; $i++) {
+            $randomString .= $characters[rand(0, $charactersLength - 1)];
+        }
+
+        return $randomString;
+    }
+
     public static function generate($configArr)
     {
         if (!array_key_exists('table', $configArr) || $configArr['table'] == '') {
@@ -83,36 +94,24 @@ class UniqueStringGenerator
         }
 
         $prefixLength = strlen($configArr['prefix']);
+
         $idLength = $length - $prefixLength;
-        $whereString = '';
 
-        if (array_key_exists('where', $configArr)) {
-            $whereString .= " WHERE ";
-            foreach ($configArr['where'] as $row) {
-                $whereString .= $row[0] . "=" . $row[1] . " AND ";
+        try {
+            $all_models = DB::table($table)->select($field)->get();
+            $generated_code = (new self)->generateCode($idLength);
+            while ($all_models->contains($generated_code)) {
+                $generated_code = (new self)->generateCode($idLength);
             }
-        }
-        $whereString = rtrim($whereString, 'AND ');
 
+            if ($generated_code) {
+                return $prefix.$generated_code;
 
-        $totalQuery = sprintf("SELECT count(%s) total FROM %s %s", $field, $configArr['table'], $whereString);
-        $total = DB::select($totalQuery);
-
-        if ($total[0]->total) {
-            if ($resetOnPrefixChange) {
-                $maxQuery = sprintf("SELECT MAX(%s) AS maxid FROM %s WHERE %s LIKE %s", $field, $table, $field, "'" . $prefix . "%'");
             } else {
-                $maxQuery = sprintf("SELECT MAX(%s) AS maxid FROM %s", $field, $table);
+                return $prefix.$generated_code;
             }
-
-            $queryResult = DB::select($maxQuery);
-            $maxFullId = $queryResult[0]->maxid;
-
-            $maxId = substr($maxFullId, $prefixLength, $idLength);
-            return $prefix . str_pad((int)$maxId + 1, $idLength, '0', STR_PAD_LEFT);
-
-        } else {
-            return $prefix . str_pad(1, $idLength, '0', STR_PAD_LEFT);
+        } catch (Exception $e){
+            throw new Exception($e->getMessage());
         }
     }
 }
